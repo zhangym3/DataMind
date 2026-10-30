@@ -21,6 +21,42 @@ def process_job(service, job, gateway=None):
         store.check_job(job["id"], job["lease"])
     gateway = gateway or Gateway(store, check_cancel=check)
     check()
+    if job["kind"] == "import_v2":
+        from .three_source_jobs import execute_ingest_graph
+        accepted, failures = [], []
+        for path in payload["paths"]:
+            check()
+            try:
+                accepted.append(execute_ingest_graph(store, payload["sessionId"], path,
+                                                    job["id"] + ":" + str(len(accepted) + len(failures)), gateway))
+            except AppError as exc:
+                failures.append({"name": Path(path).name, **exc.as_dict()})
+        return {"acceptedDetails": accepted, "failures": failures}
+    if job["kind"] == "query_v2":
+        from .three_source_graph import execute_query_graph
+        run_id = payload["runId"]
+        try:
+            result = execute_query_graph(store, run_id, gateway)
+            return {"runId": run_id, "status": result["status"]}
+        except AppError as exc:
+            with store.transaction() as db:
+                run = store.get("run_v2", run_id, db)
+                run.update(status="WAITING_INPUT" if exc.code in ("AMBIGUOUS", "RETRIEVAL_UNCERTAIN", "DATE_AMBIGUOUS") else "FAILED",
+                           error=exc.as_dict(), finishedAt=now())
+                store.put("run_v2", run, db)
+                store.put("message", {"role": "assistant", "sessionId": run["sessionId"], "turnId": run["turnId"],
+                    "runId": run_id, "text": exc.message}, db)
+            return {"runId": run_id, "status": run["status"]}
+        except BaseException as exc:
+            with store.transaction() as db:
+                run = store.get("run_v2", run_id, db)
+                run.update(status="FAILED", error={"code": "INTERNAL_ERROR",
+                    "message": "查询执行失败，请查看本机诊断记录", "details": {"exceptionType": type(exc).__name__}}, finishedAt=now())
+                store.put("run_v2", run, db)
+            raise
+    if job["kind"] == "metric_sql_v2":
+        from .three_source_jobs import execute_sql_graph
+        return execute_sql_graph(store, payload["metricId"], payload["expectedRevision"], job["id"], gateway)
     if job["kind"] == "import":
         accepted, failures = [], []
         accepted_details = []

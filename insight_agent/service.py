@@ -5,7 +5,7 @@ import json
 import time
 
 from . import definitions
-from .core import AppError, ENGINE_VERSION, LIMITS, VERSION, digest, dumps, now, require
+from .core import AppError, ENGINE_VERSION, LIMITS, VERSION, digest, dumps, now, require, uid
 from .data import catalog, record_mapping_revision, suggest_mappings, validate_mappings
 from .engine import validate_parameters
 from .word_spec import legacy_doc_available
@@ -85,7 +85,23 @@ class AppService:
         with self.store.transaction() as db:
             return self.store.put("session", {"name": name[:120] or "新数据对话", "definitionId": definition_id, "domainPackId": definition["manifest"]["domainPack"]["id"] if definition_id else None, "attachmentIds": [], "mappings": {}, "state": "DRAFT", "archived": False, "draft": "", "baselineHash": None}, db)
 
+    def create_session_v2(self, name="新数据对话"):
+        require(isinstance(name, str) and len(name) <= 120, "INVALID_SESSION", "对话名称无效")
+        with self.store.transaction() as db:
+            return self.store.put("session", {"name": name.strip() or "新数据对话", "schemaVersion": 2,
+                "definitionId": None, "attachmentIds": [], "mappings": {}, "state": "DRAFT",
+                "archived": False, "draft": "", "baselineHash": None}, db)
+
     def session_detail(self, session_id):
+        session = self.store.get("session", session_id)
+        if session.get("schemaVersion") == 2:
+            from .three_source_ingest import list_sources
+            with self.store.connect() as db:
+                messages = [self.store.get("message", row[0], db) for row in db.execute("SELECT id FROM objects WHERE kind='message' AND json_extract(data,'$.sessionId')=? ORDER BY created,rowid", (session_id,))]
+                runs = [self.store.get("run_v2", row[0], db) for row in db.execute("SELECT id FROM objects WHERE kind='run_v2' AND json_extract(data,'$.sessionId')=? ORDER BY created,rowid DESC", (session_id,))]
+            return {"session": session, "sources": list_sources(self.store, session_id), "messages": messages,
+                    "runs": runs, "attachments": [], "tables": [], "artifacts": [], "comparisons": [],
+                    "metricDefinition": None, "activities": self.session_activities(session_id)}
         definition = self.session_metrics(session_id)
         session = self.store.get("session", session_id)
         candidates = [c for c in definition["candidates"] if c["id"] not in definition.get("metricExclusions", {})] if definition else []
@@ -250,6 +266,9 @@ class AppService:
         require(set(changes) <= {"name", "archived", "draft", "definitionId", "mappings", "attachmentIds"}, "INVALID_SESSION", "会话修改包含未知字段")
         with self.store.transaction() as db:
             session = self.store.get("session", session_id, db)
+            if session.get("schemaVersion") == 2:
+                require(set(changes) <= {"name", "archived", "draft"},
+                        "INVALID_SESSION", "三源对话不接受 Word 指标说明或旧字段映射")
             if "archived" in changes:
                 require(type(changes["archived"]) is bool, "INVALID_SESSION", "归档状态无效")
                 require(not db.execute("SELECT 1 FROM jobs WHERE scope=? AND status IN ('QUEUED','RUNNING')", (session_id,)).fetchone(), "SESSION_BUSY", "请先完成或取消当前会话任务")
@@ -332,6 +351,12 @@ class AppService:
         with self.store.transaction() as db:
             if session_id:
                 session = self.store.get("session", session_id, db)
+                if session.get("schemaVersion") == 2:
+                    require(not session["archived"], "SESSION_ARCHIVED", "请先恢复归档会话")
+                    require(all(Path(p).suffix.lower() == ".xlsx" for p in paths), "FORMAT_UNSUPPORTED", "三源对话只接收 XLSX 数据文件")
+                    job_id = self.store.enqueue(db, "import_v2", session_id, {"paths": paths, "sessionId": session_id})
+                    self.store.event(db, session_id, "import.started", {"jobId": job_id, "files": files, "total": len(files)})
+                    return {"jobId": job_id}
                 require(session["state"] == "DRAFT", "SESSION_LOCKED", "会话已锁定，请新建对话导入文件")
                 require(not any(j["scope"] == session_id and j["kind"] == "turn" and j["status"] in ("QUEUED", "RUNNING") for j in self.store.jobs()), "SESSION_BUSY", "分析已提交，暂不能变更数据")
             scope = session_id or "library"
@@ -423,6 +448,8 @@ class AppService:
         return result
 
     def submit_user_turn(self, session_id, revision, request_id, text, action="AUTO", parameters=None, source_run_id=None):
+        if self.store.get("session", session_id).get("schemaVersion") == 2:
+            return self.submit_v2_turn(session_id, revision, request_id, text, action, parameters, source_run_id)
         require(action in LOCAL_ACTIONS | {"AUTO", "PLAN", "ANALYZE", "EXPLAIN", "SUMMARY", "MATERIAL_QUERY", "RECALCULATE_FROZEN", "REGENERATE", "RESULT_QUERY", "FORMULA_INSPECT"}, "INVALID_ACTION", "操作不受支持")
         require(isinstance(text, str) and len(text) <= 4000 and (text.strip() or action != "AUTO"), "INVALID_MESSAGE", "请输入消息，最多 4000 字")
         require(parameters is None or isinstance(parameters, dict), "INVALID_PARAMETER", "参数必须为对象")
@@ -458,6 +485,114 @@ class AppService:
             if preparation:
                 self.store.event(db, session_id, "turn.preparing", response | preparation)
             return response
+
+    def submit_v2_turn(self, session_id, revision, request_id, text, action="AUTO", parameters=None, source_run_id=None):
+        require(action == "AUTO" and not parameters and source_run_id is None and
+                isinstance(text, str) and 1 <= len(text.strip()) <= 4000,
+                "INVALID_MESSAGE", "请输入三源数据查询问题")
+        payload = {"sessionId": session_id, "revision": revision, "text": text.strip()}
+        request_hash = digest(payload)
+        local_kind = ("sources" if text.strip() in ("有哪些文件", "有哪些数据文件", "当前文件", "已上传文件", "上传了几份文件")
+                      else "fields" if text.strip() in ("有哪些字段", "查看表结构", "表结构") else None)
+        with self.store.transaction() as db:
+            prior = db.execute("SELECT hash,response FROM requests WHERE id=?", (request_id,)).fetchone()
+            if prior:
+                require(prior[0] == request_hash, "IDEMPOTENCY_CONFLICT", "请求标识已用于其他内容")
+                return json.loads(prior[1])
+            session = self.store.get("session", session_id, db)
+            require(session["revision"] == revision and not session["archived"], "REVISION_CONFLICT", "对话已变化，请刷新")
+            if local_kind:
+                turn_id = uid("turn_")
+                if local_kind == "sources":
+                    rows = db.execute("SELECT file_name,source_type,state,row_count FROM data_source WHERE session_id=? ORDER BY imported_at", (session_id,)).fetchall()
+                    answer = "\n".join(f"{row['file_name']}：{row['source_type']}，{row['row_count']} 行，{row['state']}" for row in rows) if rows else "当前对话还没有上传文件。"
+                else:
+                    from .three_source_kb import active_release
+                    release = active_release(db)
+                    rows = db.execute("""SELECT e.entity_id,f.field_id FROM kb_field f JOIN kb_entity e
+                        ON e.release_id=f.release_id AND e.entity_id=f.entity_id
+                        WHERE f.release_id=? ORDER BY e.entity_id,f.field_id""", (release["id"],)).fetchall()
+                    grouped = {}
+                    for row in rows:
+                        grouped.setdefault(row[0], []).append(row[1])
+                    answer = "\n".join(f"{entity}：{', '.join(fields)}" for entity, fields in grouped.items())
+                self.store.put("message", {"role": "user", "sessionId": session_id, "turnId": turn_id, "text": text.strip()}, db)
+                self.store.put("message", {"role": "assistant", "sessionId": session_id, "turnId": turn_id, "text": answer}, db)
+                response = {"turnId": turn_id, "local": True}
+                db.execute("INSERT INTO requests VALUES (?,?,?,?)", (request_id, request_hash, dumps(response), now()))
+                self.store.event(db, session_id, "turn.accepted", response)
+                return response
+            data_revision = db.execute("SELECT * FROM data_revision WHERE session_id=? ORDER BY revision_no DESC LIMIT 1", (session_id,)).fetchone()
+            require(data_revision, "DATA_REQUIRED", "请先上传三类手术数据")
+            from .three_source_kb import active_release
+            kb_release = active_release(db)
+            metric_catalog = db.execute("""SELECT m.id,m.active_version_id FROM manual_metric m
+                WHERE m.deleted_at IS NULL AND m.active_version_id IS NOT NULL ORDER BY m.id""").fetchall()
+            metric_catalog_hash = digest([tuple(row) for row in metric_catalog])
+            turn_id, run_id = uid("turn_"), uid("runv2_")
+            self.store.put("message", {"role": "user", "sessionId": session_id, "turnId": turn_id, "text": text.strip()}, db)
+            self.store.put("run_v2", {"id": run_id, "sessionId": session_id, "turnId": turn_id,
+                "question": text.strip(), "status": "QUEUED", "dataRevisionId": data_revision["id"],
+                "manifestSha256": data_revision["manifest_sha256"],
+                "kbReleaseId": kb_release["id"], "kbContentSha256": kb_release["content_sha256"],
+                "metricCatalogSha256": metric_catalog_hash}, db)
+            job_id = self.store.enqueue(db, "query_v2", session_id, {"runId": run_id})
+            response = {"turnId": turn_id, "runId": run_id, "jobId": job_id}
+            db.execute("INSERT INTO requests VALUES (?,?,?,?)", (request_id, request_hash, dumps(response), now()))
+            self.store.event(db, session_id, "turn.accepted", response)
+            return response
+
+    def resolve_v2_metric(self, session_id, run_id, metric_id):
+        with self.store.transaction() as db:
+            run = self.store.get("run_v2", run_id, db)
+            require(run["sessionId"] == session_id and run["status"] == "WAITING_INPUT",
+                    "RUN_STATE", "查询不在待选择状态")
+            candidates = (run.get("error") or {}).get("details", {}).get("candidates", [])
+            require(metric_id in candidates, "METRIC_NOT_FOUND", "所选指标不在候选清单中")
+            row = db.execute("""SELECT m.active_version_id FROM manual_metric m
+                JOIN manual_metric_version v ON v.id=m.active_version_id
+                WHERE m.id=? AND m.deleted_at IS NULL AND v.status='PUBLISHED'""", (metric_id,)).fetchone()
+            require(row, "METRIC_UNPUBLISHED", "所选指标已不可用")
+            run.update(status="QUEUED", route={"decision": "MATCH", "metricId": metric_id,
+                "versionId": row[0], "reason": "USER_SELECTED"}, error=None)
+            self.store.put("run_v2", run, db)
+            job_id = self.store.enqueue(db, "query_v2", session_id, {"runId": run_id})
+            return {"runId": run_id, "jobId": job_id}
+
+    def queue_v2_sql(self, metric_id, expected_revision):
+        from .three_source_metrics import _current
+        with self.store.transaction() as db:
+            _, version = _current(db, metric_id)
+            require(version["status"] != "PUBLISHED" and version["draft_revision"] == expected_revision,
+                    "REVISION_CONFLICT", "指标草稿已变化，请刷新")
+            active = db.execute("SELECT id FROM jobs WHERE kind='metric_sql_v2' AND scope=? AND status IN ('QUEUED','RUNNING')", (metric_id,)).fetchone()
+            require(not active, "METRIC_BUSY", "该指标正在生成 SQL")
+            return {"jobId": self.store.enqueue(db, "metric_sql_v2", metric_id,
+                {"metricId": metric_id, "expectedRevision": expected_revision})}
+
+    def preview_v2_metric(self, session_id, metric_id):
+        from .three_source_metrics import _current
+        from .three_source_query import compile_plan, execute_plan
+        with self.store.connect() as db:
+            _, version = _current(db, metric_id)
+            require(version["status"] in ("VALIDATED", "PUBLISHED") and version["plan_json"],
+                    "METRIC_UNPUBLISHED", "请先生成并校验 SQL")
+            plan = json.loads(version["plan_json"])
+            compiled = compile_plan(db, plan, version["kb_release_id"])
+            require(compiled["sql"] == version["sql_template"] and compiled["releaseHash"] == version["kb_content_sha256"],
+                    "SQL_CHANGED", "预览 SQL 与本地编译模板不一致")
+        result = execute_plan(self.store, session_id, plan, release_id=version["kb_release_id"],
+                              release_hash=version["kb_content_sha256"])
+        return {"metricId": metric_id, "versionId": version["id"], "rows": result["rows"],
+                "sql": result["sql"], "revisionId": result["revisionId"], "unit": result["unit"]}
+
+    def delete_session(self, session_id, revision, confirmation):
+        session = self.store.get("session", session_id)
+        if session.get("schemaVersion") == 2:
+            from .three_source_maintenance import delete_session
+            return delete_session(self.store, session_id, revision, confirmation)
+        from .maintenance import delete_session
+        return delete_session(self.store, session_id, revision, confirmation)
 
     def require_analysis_definition(self, session):
         """Only a validated snapshot of this conversation's document may execute."""
@@ -844,7 +979,7 @@ class AppService:
                 draft = self.managed_definition(args.get("scope"))
                 require(draft.get("sourceKind") != "MANUAL", "INVALID_JOB", "手工指标无需在线提取")
         methods = {
-            "bootstrap": self.bootstrap, "session.create": self.create_session, "session.list": self.session_list,
+            "bootstrap": self.bootstrap, "session.create": self.create_session, "session.createV2": self.create_session_v2, "session.list": self.session_list,
             "session.detail": self.session_detail, "session.update": self.update_session,
             "session.clear": self.clear_conversation,
             "session.metrics": self.session_metrics, "session.metrics.retry": self.retry_session_metrics,
@@ -870,7 +1005,19 @@ class AppService:
             "definition.disable": lambda **kw: self.manage_definition("disable", **kw),
             "definition.default": lambda **kw: self.manage_definition("default", **kw),
             "definition.compare": self.compare_definitions,
-            "session.delete": lambda **kw: __import__('insight_agent.maintenance', fromlist=['delete_session']).delete_session(self.store, **kw),
+            "session.delete": self.delete_session,
+            "source.list": lambda **kw: __import__('insight_agent.three_source_ingest', fromlist=['list_sources']).list_sources(self.store, **kw),
+            "source.confirmUnit": lambda **kw: __import__('insight_agent.three_source_ingest', fromlist=['confirm_unit']).confirm_unit(self.store, **kw),
+            "source.correctUnit": lambda **kw: __import__('insight_agent.three_source_ingest', fromlist=['correct_unit']).correct_unit(self.store, **kw),
+            "queryV2.resolveMetric": self.resolve_v2_metric,
+            "metricV2.list": lambda **kw: __import__('insight_agent.three_source_metrics', fromlist=['list_metrics']).list_metrics(self.store, **kw),
+            "metricV2.get": lambda **kw: __import__('insight_agent.three_source_metrics', fromlist=['get_metric']).get_metric(self.store, **kw),
+            "metricV2.create": lambda **kw: __import__('insight_agent.three_source_metrics', fromlist=['create_metric']).create_metric(self.store, **kw),
+            "metricV2.edit": lambda **kw: __import__('insight_agent.three_source_metrics', fromlist=['edit_metric']).edit_metric(self.store, **kw),
+            "metricV2.delete": lambda **kw: __import__('insight_agent.three_source_metrics', fromlist=['delete_metric']).delete_metric(self.store, **kw),
+            "metricV2.generateSql": self.queue_v2_sql,
+            "metricV2.publish": lambda **kw: __import__('insight_agent.three_source_metrics', fromlist=['publish_metric']).publish_metric(self.store, **kw),
+            "metricV2.preview": self.preview_v2_metric,
         }
         require(method in methods, "API_FORBIDDEN", "接口未开放")
         return methods[method](**args)

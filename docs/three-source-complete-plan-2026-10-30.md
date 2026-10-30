@@ -1,12 +1,12 @@
 # DataMind 三类手术数据与指标查询完整方案
 
-日期：2026-10-30。状态：实施方案，尚未接入运行代码。本文是新流程的主方案，覆盖数据入库、表结构、内置知识库、手动指标管理、无向量库语义检索、意图路由、LangGraph、界面及验收。逐字段注释以[SQLite 表结构合同](contracts/three-source-storage-v2.sql)为准；[格式合同](contracts/three-source-layouts-v1.json)、[查询知识库种子](contracts/three-source-query-kb-v1.json)、[退单归属合同](contracts/cancellation-unit-routing-v1.json)是版本化输入。`templet/` 七份样例只证明格式和观察到的值，不自动证明医疗业务口径。
+日期：2026-10-30。状态：实施中，尚未完成全流程验收和发布。本文是新流程的主方案，覆盖数据入库、表结构、内置知识库、手动指标管理、无向量库语义检索、意图路由、LangGraph、界面及验收。逐字段注释以[SQLite 表结构合同](contracts/three-source-storage-v2.sql)为准；[格式合同](contracts/three-source-layouts-v1.json)、[查询知识库种子](contracts/three-source-query-kb-v1.json)、[退单归属合同](contracts/cancellation-unit-routing-v1.json)是版本化输入。`templet/` 七份样例只证明格式和观察到的值，不自动证明医疗业务口径。
 
 ## 1. 目标和工程边界
 
 新流程只接收首台手术信息、手术室退单信息、手术明细查询三类固定 Excel。上传后按当前对话入库，补传形成新 `data_revision`；查询默认只读本对话当前 revision。手动指标库可供不同对话复用定义，但指标 SQL 每次仅查询发起对话的数据。用户只需填写名称和自然语言描述，可一键让 AI 提议查询计划与 SQL，再查看和发布本地编译的参数化 SQL。取数先检索手动指标；只有明确 `NO_MATCH` 才用表结构知识库生成动态 SQL。新界面不提供 Word 指标说明导入或自动生成指标；旧 Word 运行仅保留历史只读入口。DOCX 报告仍可作为查询输出。
 
-当前工程尚无三源运行时表、入库 Skill 或新查询图。`insight_agent/store.py` 只接受 schema 1；`insight_agent/skills.py` 注册的是旧 `surgery-excel-ingest`，其 `prepare_fill/materialize` 面向 Word/document-fill 合同；`insight_agent/files.py` 的 XLSX 解析会丢掉前置标题证据并把整张表载入内存；`InsightAgent.spec` 只打包 `insight_agent/resources`，不打包 `docs/contracts`。当前模型网关只有文本 LLM 调用，没有 embedding 接口，出站白名单和系统提示也尚未开放新 KB 规划与 AI SQL 草稿阶段。因此以下节点和 Skill 均需新实现，不能把设计草案误认为已上线。
+工程已加入 schema 2、三类入库 Skill、内置知识库、手动指标管理、BM25 回退、三源查询图和界面。Python 3.11 全量测试 353 通过、1 跳过，覆盖七份样例、会话隔离、指标版本、退单归属、查询计划边界和三图 worker 路径；冻结版构建及旧流程 smoke 验证通过。新界面的人工视觉验收、独立分批暂存与持久化人工中断、质量问题记录闭环仍待完成；不得据此宣称本方案已全部上线。
 
 ```mermaid
 flowchart LR

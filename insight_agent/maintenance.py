@@ -34,11 +34,12 @@ def backup(store, destination, password):
             target.execute("UPDATE jobs SET status='CANCELLED',payload='{}' WHERE status IN ('QUEUED','RUNNING')")
             target.commit()
         shutil.copytree(store.home / "blobs", staging / "blobs")
-        checkpoint = store.home / "checkpoints.sqlite3"
-        if checkpoint.exists():
-            with closing(sqlite3.connect(checkpoint)) as source, closing(sqlite3.connect(staging / checkpoint.name)) as target:
-                source.backup(target)
-        manifest = {"schemaVersion": 1, "appVersion": VERSION, "created": now(), "files": {str(p.relative_to(staging)).replace("\\", "/"): sha(p.read_bytes()) for p in staging.rglob("*") if p.is_file()}, "keysIncluded": False}
+        for name in ("checkpoints.sqlite3", "three-source-checkpoints.sqlite3"):
+            checkpoint = store.home / name
+            if checkpoint.exists():
+                with closing(sqlite3.connect(checkpoint)) as source, closing(sqlite3.connect(staging / checkpoint.name)) as target:
+                    source.backup(target)
+        manifest = {"schemaVersion": 2, "appVersion": VERSION, "created": now(), "files": {str(p.relative_to(staging)).replace("\\", "/"): sha(p.read_bytes()) for p in staging.rglob("*") if p.is_file()}, "keysIncluded": False}
         (staging / "backup-manifest.json").write_text(dumps(manifest), encoding="utf-8")
         temp = destination.with_name(destination.name + ".tmp")
         try:
@@ -74,12 +75,12 @@ def verify_restore(archive_path, password, destination):
         manifest_path = restored / "backup-manifest.json"
         require(manifest_path.is_file(), "BACKUP_INVALID", "备份清单缺失")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        require(manifest["schemaVersion"] == 1 and manifest["keysIncluded"] is False, "BACKUP_VERSION", "备份版本不兼容")
+        require(manifest["schemaVersion"] in (1, 2) and manifest["keysIncluded"] is False, "BACKUP_VERSION", "备份版本不兼容")
         actual = {str(p.relative_to(restored)).replace("\\", "/") for p in restored.rglob("*") if p.is_file()} - {"backup-manifest.json"}
         require(actual == set(manifest["files"]), "BACKUP_INVALID", "备份文件清单不一致")
         for name, hash in manifest["files"].items():
             require(sha(safe_child(restored, name).read_bytes()) == hash, "BACKUP_CORRUPT", "备份文件哈希不匹配")
-        for name in ("datamind.sqlite3", "checkpoints.sqlite3"):
+        for name in ("datamind.sqlite3", "checkpoints.sqlite3", "three-source-checkpoints.sqlite3"):
             if (restored / name).exists():
                 with closing(sqlite3.connect(restored / name)) as db:
                     require(db.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "BACKUP_CORRUPT", "备份数据库完整性检查失败")
@@ -250,6 +251,9 @@ def verify_references(folder):
     with closing(sqlite3.connect(folder / "datamind.sqlite3")) as db:
         for kind, data in db.execute("SELECT kind,data FROM objects"):
             visit(json.loads(data), kind)
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='data_source'").fetchone():
+            for (file_hash,) in db.execute("SELECT DISTINCT file_sha256 FROM data_source"):
+                check_blob(file_hash)
     # Checkpoint serializers store typed channels separately. All hashes which
     # name existing blobs are traversed too; missing explicit references above
     # are still fatal rather than confused with rule/contract digest values.
@@ -266,3 +270,12 @@ def verify_references(folder):
         for hash in set(x.decode() for x in re.findall(rb"[a-f0-9]{64}", checkpoint.read_bytes())):
             if (folder / "blobs" / hash).is_file():
                 check_blob(hash)
+    v2_checkpoint = folder / "three-source-checkpoints.sqlite3"
+    if v2_checkpoint.exists():
+        from langgraph.checkpoint.sqlite import SqliteSaver
+        with closing(sqlite3.connect(v2_checkpoint)) as conn:
+            saver = SqliteSaver(conn)
+            for record in saver.list(None):
+                visit(record.checkpoint.get("channel_values", {}))
+                for _, channel, value in record.pending_writes or []:
+                    visit({channel: value})

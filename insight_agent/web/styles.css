@@ -1525,3 +1525,27 @@ input,select { border:1px solid var(--line);border-radius:7px;padding:7px;backgr
 .metric-detail-description{white-space:pre-wrap;line-height:1.9;color:#66627f;overflow-wrap:anywhere}
 @media(max-width:1000px){.library{padding:24px 22px 40px}.library-toolbar{gap:12px}.library-version-filter{flex:1 1 240px}.library-stat{padding:12px}.library-stat>small{font-size:0.8125rem}}
 @media(max-width:650px){.library-metric-stats{gap:7px}.library-stat{padding:10px 8px}.library-stat>strong{font-size:1.5625rem}.library-stat>small{display:none}.library-selected-version{flex-wrap:wrap}.metric-detail-facts{grid-template-columns:1fr}}
+#v2Inspector{display:none}
+.v2-session #v2Inspector{display:block}
+.v2-session #inspector>#v2Inspector~*{display:none}
+.v2-session .legacy-analysis-controls,.v2-session #mappingBtn{display:none}
+.library>#v2Metrics~*,.library>.lib-top{display:none}
+.v2-source{padding:12px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.v2-source strong,.v2-source small{display:block}
+.v2-source small{margin-top:5px;color:var(--muted);line-height:1.5}
+.v2-unit-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.v2-unit-actions button{padding:5px 8px;font-size:.75rem}
+.v2-metric-list{margin-top:22px}
+.v2-metric{display:flex;justify-content:space-between;gap:20px;padding:18px 0;border-bottom:1px solid var(--line)}
+.v2-metric>div:first-child{min-width:0}
+.v2-metric strong{margin-right:10px}
+.v2-metric p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+.v2-metric small{color:var(--muted)}
+.v2-job{display:block;margin-top:8px;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
+.v2-version{padding:10px 0;border-bottom:1px solid var(--line)}
+.v2-version p{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted)}
+.v2-metric>div:last-child{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;flex-shrink:0}
+.v2-field{display:block;margin:14px 0;font-weight:600}
+.v2-field input,.v2-field textarea{display:block;width:100%;margin-top:7px;padding:10px;border:1px solid var(--line);border-radius:4px;font:inherit;resize:vertical}
+.v2-session .run-card pre,#v2Metrics pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:650px){.v2-metric{display:block}.v2-metric>div:last-child{margin-top:10px}}

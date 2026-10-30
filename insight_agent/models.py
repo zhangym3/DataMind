@@ -144,6 +144,10 @@ def redact_text(text):
 
 
 STAGE_KEYS = {
+    "cancellation_unit": {"fileName", "units", "instruction"},
+    "metric_sql_draft": {"name", "description", "catalog", "instruction"},
+    "metric_match": {"question", "candidates", "instruction"},
+    "kb_plan": {"question", "catalog", "instruction"},
     "connection": {"instruction"},
     "intent": {"question", "metricCatalog", "allowedActions", "resultCatalog", "materialCatalog"},
     "definition": {"nodes", "domain", "ruleSchema", "instruction"},
@@ -174,6 +178,21 @@ def retry_delay(attempt, retry_after=None):
 
 def outbound(stage, payload):
     require(stage in STAGE_KEYS and set(payload) <= STAGE_KEYS[stage], "OUTBOUND_POLICY", "模型请求不符合当前阶段字段白名单")
+    if stage == "cancellation_unit":
+        require(isinstance(payload.get("fileName"), str) and len(payload["fileName"]) <= 240
+                and isinstance(payload.get("units"), list) and len(payload["units"]) == 3
+                and all(isinstance(unit, dict) and set(unit) == {"code", "display", "aliases"}
+                        for unit in payload["units"]), "OUTBOUND_POLICY", "退单文件名判断输入无效")
+    if stage in ("metric_sql_draft", "kb_plan"):
+        catalog = payload.get("catalog", {})
+        require(isinstance(catalog, dict) and set(catalog) <= {"entities", "capabilities", "fields", "terms", "relations", "retrieval"},
+                "OUTBOUND_POLICY", "知识库摘要结构无效")
+        require(len(dumps(catalog)) <= 30000, "OUTBOUND_POLICY", "知识库摘要超限")
+    if stage == "metric_match":
+        candidates = payload.get("candidates", [])
+        require(isinstance(candidates, list) and len(candidates) <= 50 and all(isinstance(c, dict)
+                and set(c) == {"id", "name", "description"} for c in candidates),
+                "OUTBOUND_POLICY", "指标候选结构无效")
     def closed(value, keys):
         require(isinstance(value, dict) and set(value) <= set(keys), "OUTBOUND_POLICY", "模型请求包含未批准的嵌套字段")
     if stage == "intent":

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,8 +53,28 @@ class Store:
         with self.connect() as db:
             db.executescript(SCHEMA)
             version = db.execute("SELECT value FROM meta WHERE key='schema'").fetchone()
-            require(not version or version[0] == "1", "SCHEMA_VERSION", "数据目录来自不兼容版本，请先备份并使用对应应用")
-            db.execute("INSERT OR IGNORE INTO meta VALUES('schema','1')")
+            require(not version or version[0] in ("1", "2"), "SCHEMA_VERSION", "数据目录来自不兼容版本，请先备份并使用对应应用")
+            if not version or version[0] == "1":
+                if version:
+                    backup = self.home / "datamind-before-schema-2.sqlite3"
+                    if not backup.exists():
+                        with sqlite3.connect(backup) as copy:
+                            db.backup(copy)
+                root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+                contract = root / "docs" / "contracts" / "three-source-storage-v2.sql"
+                require(contract.is_file(), "KB_PACKAGE_MISSING", "内置三源数据库合同缺失")
+                ddl = contract.read_text(encoding="utf-8")
+                try:
+                    db.executescript("BEGIN IMMEDIATE;\n" + ddl + "\n"
+                                     "INSERT OR REPLACE INTO meta(key,value) VALUES('schema','2');\nCOMMIT;")
+                except BaseException:
+                    if db.in_transaction:
+                        db.rollback()
+                    raise
+            from .three_source_kb import install_builtin_kb
+            install_builtin_kb(db)
+            require(db.execute("PRAGMA foreign_key_check").fetchone() is None,
+                    "SCHEMA_INVALID", "数据库外键检查未通过，请从备份恢复")
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=30, isolation_level=None, factory=ClosingConnection)

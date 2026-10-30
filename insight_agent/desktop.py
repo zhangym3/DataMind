@@ -88,7 +88,8 @@ class DesktopBridge(QObject):
     @Slot()
     def pickFiles(self):
         formats = "*.xlsx *.xls *.docx *.doc"
-        paths, _ = QFileDialog.getOpenFileNames(self.window, "导入数据或指标说明", "", "Office 文件 (" + formats + ")")
+        is_v2 = bool(self.session_id and self.service.store.get("session", self.session_id).get("schemaVersion") == 2)
+        paths, _ = QFileDialog.getOpenFileNames(self.window, "导入手术数据" if is_v2 else "导入数据或指标说明", "", "Excel 工作簿 (*.xlsx)" if is_v2 else "Office 文件 (" + formats + ")")
         if paths:
             self.import_paths(paths)
 
@@ -96,10 +97,10 @@ class DesktopBridge(QObject):
         try:
             target = self.session_id
             if not target and not self.library_context:
-                target = self.service.create_session()["id"]
+                target = self.service.create_session_v2()["id"]
                 self.setContext(target)
                 self.notice.emit(dumps({"code": "NEW_SESSION", "message": "已创建数据对话", "sessionId": target}))
-            if target and self.service.store.get("session", target)["state"] == "LOCKED":
+            if target and self.service.store.get("session", target)["state"] == "LOCKED" and self.service.store.get("session", target).get("schemaVersion") != 2:
                 QMessageBox.information(self.window, "无法导入文件", "当前会话已锁定，请先点击“新建数据对话”后再导入文件。")
                 return
             self.service.import_paths(paths, target)

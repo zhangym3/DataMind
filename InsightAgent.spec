@@ -4,6 +4,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 root = Path(SPECPATH)
 datas = [(str(root / 'insight_agent/web'), 'insight_agent/web'),
          (str(root / 'insight_agent/resources'), 'insight_agent/resources'),
+         (str(root / 'docs/contracts'), 'docs/contracts'),
          (str(root / 'artifacts/build-metadata/licenses'), 'build-metadata/licenses'),
          (str(root / 'artifacts/build-metadata/dependencies.json'), 'build-metadata'),
          (str(root / 'artifacts/build-metadata/requirements-lock.txt'), 'build-metadata')]
