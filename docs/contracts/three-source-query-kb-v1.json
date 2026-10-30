@@ -1,0 +1,128 @@
+{
+  "release": "surgery-query-kb/1.0-draft",
+  "layoutCatalog": "three-source-layouts/1.0-draft",
+  "storageSchemaVersion": 2,
+  "policy": {
+    "unlistedFieldAccess": "DENY",
+    "sourceRowCountLabel": "来源记录行数",
+    "crossEntityJoin": "APPROVED_RELATION_ONLY",
+    "personalValuesToModel": false
+  },
+  "entities": [
+    {
+      "id": "first_surgery",
+      "table": "first_surgery_row",
+      "sourceType": "FIRST_SURGERY",
+      "grain": "一条首台手术查询导出行；首台筛选规则和实际执行状态待确认",
+      "dateField": "operation_date",
+      "fields": {
+        "operation_date": {"meaning": "来源的手术日期", "filter": ["eq", "range"], "group": true},
+        "operating_unit": {"meaning": "来源的手术室大区域", "filter": ["eq", "in"], "group": true},
+        "operating_room": {"meaning": "来源的具体手术间", "filter": ["eq", "in"], "group": true},
+        "inpatient_no": {"meaning": "住院号，不是手术唯一键", "sensitivity": "PERSONAL"},
+        "patient_id": {"meaning": "来源患者 ID，不是跨表手术键", "sensitivity": "PERSONAL"},
+        "patient_name": {"meaning": "患者姓名", "sensitivity": "PERSONAL"},
+        "surgical_department": {"meaning": "来源手术科室", "filter": ["eq", "in"], "group": true},
+        "surgeon": {"meaning": "来源手术医生", "sensitivity": "PERSONAL"},
+        "room_entry_hhmm": {"meaning": "入室时分，无日期归属规则"},
+        "anesthesia_start_hhmm": {"meaning": "麻醉开始时分，无日期归属规则"},
+        "operation_start_hhmm": {"meaning": "手术开始时分，无日期归属规则"},
+        "anesthetist": {"meaning": "来源主麻", "sensitivity": "PERSONAL"},
+        "operation_name": {"meaning": "来源手术名称", "filter": ["eq"], "group": true},
+        "preop_diagnosis": {"meaning": "来源术前诊断", "sensitivity": "PERSONAL"}
+      }
+    },
+    {
+      "id": "cancellation",
+      "table": "cancellation_row",
+      "sourceType": "CANCELLATION",
+      "grain": "一条退单导出行；不保证一行对应唯一手术或唯一退单事件",
+      "dateField": "record_date",
+      "fields": {
+        "sequence_no": {"meaning": "来源序号，仅限文件内展示"},
+        "record_date": {"meaning": "来源日期，与退单发生时间分别存储", "filter": ["eq", "range"], "group": true},
+        "inpatient_no": {"meaning": "住院号，不是手术唯一键", "sensitivity": "PERSONAL"},
+        "patient_name": {"meaning": "患者姓名", "sensitivity": "PERSONAL"},
+        "operation_category": {"meaning": "来源手术类别", "filter": ["eq", "in"], "group": true},
+        "operating_room": {"meaning": "具体手术间；来源没有手术室大区域", "filter": ["eq", "in"], "group": true},
+        "case_order": {"meaning": "来源台次，不是唯一序号", "filter": ["eq"], "group": true},
+        "surgeon_department": {"meaning": "来源术者科室", "filter": ["eq", "in"], "group": true},
+        "surgeon": {"meaning": "来源术者", "sensitivity": "PERSONAL"},
+        "anesthetist": {"meaning": "来源麻醉医生", "sensitivity": "PERSONAL"},
+        "scrub_nurse": {"meaning": "来源洗手护士", "sensitivity": "PERSONAL"},
+        "circulating_nurse": {"meaning": "来源巡回护士", "sensitivity": "PERSONAL"},
+        "cancelled_local": {"meaning": "无时区的本地退单日期时间", "filter": ["range"]},
+        "cancelled_by": {"meaning": "来源退单人", "sensitivity": "PERSONAL"},
+        "cancellation_categories_raw": {"meaning": "来源多标签原文；按标签过滤须使用 cancellation_tag"},
+        "cancellation_reason": {"meaning": "来源退单原因自由文本", "sensitivity": "PERSONAL"}
+      },
+      "derivedFields": {
+        "cancellation_tag": {"table": "cancellation_tag", "column": "tag", "meaning": "退单类别拆分标签；按行去重后聚合", "filter": ["eq", "in"], "group": true},
+        "origin_operating_unit": {"table": "data_source", "column": "origin_operating_unit", "meaning": "由文件名语义相似度确定或用户手动选定的退单来源手术室", "filter": ["eq", "in"], "group": true, "requires": "origin_unit_basis IN ('FILENAME_SEMANTIC', 'USER_CONFIRMED')", "valueDictionary": [{"code": "OR_1", "display": "一号手术室", "aliases": ["第一手术室", "一手"]}, {"code": "OR_2", "display": "二号手术室", "aliases": ["第二手术室", "二手"]}, {"code": "OR_3", "display": "三号手术室", "aliases": ["第三手术室", "三手"]}]}
+      }
+    },
+    {
+      "id": "surgery_detail",
+      "table": "surgery_detail_row",
+      "sourceType": "SURGERY_DETAIL",
+      "grain": "一条手术明细导出行；实际实施状态和去重键待确认",
+      "dateField": "operation_date",
+      "fields": {
+        "operation_date": {"meaning": "来源的手术日期", "filter": ["eq", "range"], "group": true},
+        "operating_unit": {"meaning": "来源的手术室大区域", "filter": ["eq", "in"], "group": true},
+        "operating_room": {"meaning": "来源的具体手术间", "filter": ["eq", "in"], "group": true},
+        "inpatient_no": {"meaning": "住院号，不是手术唯一键", "sensitivity": "PERSONAL"},
+        "patient_name": {"meaning": "患者姓名", "sensitivity": "PERSONAL"},
+        "sex": {"meaning": "来源性别", "sensitivity": "PERSONAL"},
+        "age_raw": {"meaning": "来源年龄原文，解析失败时不使用 age_years", "sensitivity": "PERSONAL"},
+        "clinical_department": {"meaning": "来源临床科室", "filter": ["eq", "in"], "group": true},
+        "operation_name": {"meaning": "来源手术名称", "filter": ["eq"], "group": true},
+        "anesthesia_method": {"meaning": "来源麻醉方法", "filter": ["eq", "in"], "group": true},
+        "pacu_entry_hhmm": {"meaning": "入 PACU 时分，无日期归属规则"},
+        "pacu_exit_hhmm": {"meaning": "出 PACU 时分，无日期归属规则"},
+        "operation_type": {"meaning": "来源手术类型，不是执行状态", "filter": ["eq", "in"], "group": true},
+        "operation_level": {"meaning": "来源手术级别", "filter": ["eq", "in"], "group": true},
+        "incision_grade": {"meaning": "来源切口等级", "filter": ["eq", "in"], "group": true},
+        "room_entry_hhmm": {"meaning": "入室时分，无日期归属规则"},
+        "anesthesia_start_hhmm": {"meaning": "麻醉开始时分，无日期归属规则"},
+        "operation_start_hhmm": {"meaning": "手术开始时分，无日期归属规则"},
+        "operation_end_hhmm": {"meaning": "手术结束时分，无日期归属规则"},
+        "anesthesia_end_hhmm": {"meaning": "麻醉结束时分，无日期归属规则"},
+        "room_exit_hhmm": {"meaning": "出室时分，无日期归属规则"},
+        "preop_diagnosis": {"meaning": "来源术前诊断", "sensitivity": "PERSONAL"},
+        "surgeon": {"meaning": "来源手术医生", "sensitivity": "PERSONAL"},
+        "assistant_1": {"meaning": "来源一助", "sensitivity": "PERSONAL"},
+        "assistant_2": {"meaning": "来源二助", "sensitivity": "PERSONAL"},
+        "assistant_3": {"meaning": "来源三助", "sensitivity": "PERSONAL"},
+        "anesthetist": {"meaning": "来源主麻", "sensitivity": "PERSONAL"},
+        "perfusionist": {"meaning": "来源灌注医生", "sensitivity": "PERSONAL"},
+        "scrub_nurse_1": {"meaning": "来源洗手护士1", "sensitivity": "PERSONAL"}
+      }
+    }
+  ],
+  "terms": [
+    {"term": "首台", "kind": "ENTITY", "target": "first_surgery"},
+    {"term": "退单", "kind": "ENTITY", "target": "cancellation"},
+    {"term": "手术明细", "kind": "ENTITY", "target": "surgery_detail"},
+    {"term": "退单类别", "kind": "FIELD", "entity": "cancellation", "target": "cancellation_tag"},
+    {"term": "退单时间", "kind": "FIELD", "entity": "cancellation", "target": "cancelled_local"},
+    {"term": "退单日期", "kind": "FIELD", "entity": "cancellation", "target": "record_date"},
+    {"term": "退单日期", "kind": "FIELD", "entity": "cancellation", "target": "cancelled_local"},
+    {"term": "手术室", "kind": "FIELD", "entity": "first_surgery", "target": "operating_unit"},
+    {"term": "手术室", "kind": "FIELD", "entity": "surgery_detail", "target": "operating_unit"},
+    {"term": "手术室", "kind": "FIELD", "entity": "cancellation", "target": "origin_operating_unit"}
+  ],
+  "relations": [
+    {"id": "first_to_detail", "left": "first_surgery", "right": "surgery_detail", "cardinality": "UNKNOWN", "unmatchedPolicy": "REJECT", "state": "DISABLED", "reason": "没有共同手术唯一键"},
+    {"id": "cancellation_to_detail", "left": "cancellation", "right": "surgery_detail", "cardinality": "UNKNOWN", "unmatchedPolicy": "REJECT", "state": "DISABLED", "reason": "没有共同手术唯一键"}
+  ],
+  "queryCapabilities": [
+    {"id": "COUNT_SOURCE_ROWS", "label": "来源记录行数", "unit": "行", "grain": "原始来源行", "deduplication": "NONE", "allowed": true}
+  ],
+  "examples": [
+    {
+      "question": "按日期统计当前对话的退单来源记录行数",
+      "plan": {"entity": "cancellation", "aggregate": "COUNT_SOURCE_ROWS", "groupBy": ["record_date"], "filters": [], "orderBy": [{"field": "record_date", "direction": "asc"}], "limit": 1000}
+    }
+  ]
+}
