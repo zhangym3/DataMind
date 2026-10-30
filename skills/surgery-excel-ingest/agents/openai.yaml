@@ -1,0 +1,4 @@
+interface:
+  display_name: "手术室 Excel 数据接入"
+  short_description: "导入、补传并校验手术室 Excel"
+  default_prompt: "请先制定导入计划，再接入这些 Excel 文件，使用脚本处理批量数据，并复核字段映射、行数、重复冲突和日期覆盖。"

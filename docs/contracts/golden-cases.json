@@ -1,0 +1,279 @@
+{
+  "fixtureVersion": "documentation-golden/1.0",
+  "synthetic": true,
+  "note": "Hand-calculated design fixtures; not executed against an implemented engine. Evidence hashes in example rules are placeholders.",
+  "cases": [
+    {
+      "id": "surgery_strict_boundary_and_midnight",
+      "metricExample": "examples/surgery-delay-count.json",
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "rows": [
+        {
+          "surgery_event_id": "e1",
+          "operation_date": "2026-10-01",
+          "entry_at": "2026-10-01T08:00:00+08:00",
+          "anesthesia_start_at": "2026-10-01T08:20:00+08:00"
+        },
+        {
+          "surgery_event_id": "e2",
+          "operation_date": "2026-10-01",
+          "entry_at": "2026-10-01T09:00:00+08:00",
+          "anesthesia_start_at": "2026-10-01T09:21:00+08:00"
+        },
+        {
+          "surgery_event_id": "e3",
+          "operation_date": "2026-10-31",
+          "entry_at": "2026-10-31T23:55:00+08:00",
+          "anesthesia_start_at": "2026-11-01T00:16:00+08:00"
+        },
+        {
+          "surgery_event_id": "e4",
+          "operation_date": "2026-11-01",
+          "entry_at": "2026-11-01T09:00:00+08:00",
+          "anesthesia_start_at": "2026-11-01T09:40:00+08:00"
+        }
+      ],
+      "expected": {
+        "outcome": "VALUE",
+        "exactValue": "2",
+        "selectedIds": [
+          "e2",
+          "e3"
+        ],
+        "inWindowRows": 3,
+        "outsideWindowRows": 1,
+        "invalidRows": 0
+      }
+    },
+    {
+      "id": "surgery_negative_time",
+      "metricExample": "examples/surgery-delay-count.json",
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "rows": [
+        {
+          "surgery_event_id": "e5",
+          "operation_date": "2026-10-01",
+          "entry_at": "2026-10-01T09:00:00+08:00",
+          "anesthesia_start_at": "2026-10-01T08:59:00+08:00"
+        }
+      ],
+      "expected": {
+        "outcome": "SKIP",
+        "reasonCode": "DATA_INSUFFICIENT",
+        "invalidRows": 1,
+        "numericResultAbsent": true
+      }
+    },
+    {
+      "id": "bed_weighted_aggregate",
+      "metricExample": "examples/hospital-bed-occupancy.json",
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01",
+        "group_by": [
+          "department"
+        ]
+      },
+      "rows": [
+        {
+          "department": "A",
+          "stat_date": "2026-10-01",
+          "occupied_bed_days": "10",
+          "available_bed_days": "10"
+        },
+        {
+          "department": "A",
+          "stat_date": "2026-10-02",
+          "occupied_bed_days": "30",
+          "available_bed_days": "50"
+        },
+        {
+          "department": "B",
+          "stat_date": "2026-10-01",
+          "occupied_bed_days": "0",
+          "available_bed_days": "10"
+        }
+      ],
+      "expected": {
+        "outcome": "VALUE",
+        "groups": [
+          {
+            "department": "A",
+            "numerator": "40",
+            "denominator": "60",
+            "scaleFactor": "100",
+            "displayValue": "66.67"
+          },
+          {
+            "department": "B",
+            "numerator": "0",
+            "denominator": "10",
+            "scaleFactor": "100",
+            "displayValue": "0.00"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bed_zero_denominator",
+      "metricExample": "examples/hospital-bed-occupancy.json",
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "rows": [
+        {
+          "department": "A",
+          "stat_date": "2026-10-01",
+          "occupied_bed_days": "1",
+          "available_bed_days": "0"
+        }
+      ],
+      "expected": {
+        "outcome": "SKIP",
+        "reasonCode": "ZERO_DENOMINATOR",
+        "numericResultAbsent": true
+      }
+    },
+    {
+      "id": "bed_duplicate_grain",
+      "metricExample": "examples/hospital-bed-occupancy.json",
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "rows": [
+        {
+          "department": "A",
+          "stat_date": "2026-10-01",
+          "occupied_bed_days": "1",
+          "available_bed_days": "2"
+        },
+        {
+          "department": "A",
+          "stat_date": "2026-10-01",
+          "occupied_bed_days": "2",
+          "available_bed_days": "3"
+        }
+      ],
+      "expected": {
+        "outcome": "SKIP",
+        "reasonCode": "DATA_CONFLICT",
+        "numericResultAbsent": true
+      }
+    },
+    {
+      "id": "hospital_discharge_count",
+      "metricExample": "examples/hospital-discharge-count.json",
+      "rows": [
+        {
+          "department": "A",
+          "encounter_id": "e1",
+          "discharge_date": "2026-10-01",
+          "stay_days": "3"
+        },
+        {
+          "department": "A",
+          "encounter_id": "e2",
+          "discharge_date": "2026-10-20",
+          "stay_days": "4"
+        },
+        {
+          "department": "B",
+          "encounter_id": "e3",
+          "discharge_date": "2026-10-21",
+          "stay_days": "2"
+        }
+      ],
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "expected": {
+        "outcome": "VALUE",
+        "simpleGroups": {
+          "A": "2",
+          "B": "1"
+        }
+      },
+      "manualTruth": "独立手算：2/1出院人次；(3+4)/2=3.50、2/1=2.00天；0.1+0.2-0.05=0.25元"
+    },
+    {
+      "id": "hospital_average_stay",
+      "metricExample": "examples/hospital-average-stay.json",
+      "rows": [
+        {
+          "department": "A",
+          "encounter_id": "e1",
+          "discharge_date": "2026-10-01",
+          "stay_days": "3"
+        },
+        {
+          "department": "A",
+          "encounter_id": "e2",
+          "discharge_date": "2026-10-20",
+          "stay_days": "4"
+        },
+        {
+          "department": "B",
+          "encounter_id": "e3",
+          "discharge_date": "2026-10-21",
+          "stay_days": "2"
+        }
+      ],
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "expected": {
+        "outcome": "VALUE",
+        "simpleGroups": {
+          "A": "3.50",
+          "B": "2.00"
+        }
+      },
+      "manualTruth": "独立手算：2/1出院人次；(3+4)/2=3.50、2/1=2.00天；0.1+0.2-0.05=0.25元"
+    },
+    {
+      "id": "hospital_department_revenue",
+      "metricExample": "examples/hospital-department-revenue.json",
+      "rows": [
+        {
+          "department": "A",
+          "revenue_id": "r1",
+          "revenue_date": "2026-10-01",
+          "amount": "0.1"
+        },
+        {
+          "department": "A",
+          "revenue_id": "r2",
+          "revenue_date": "2026-10-02",
+          "amount": "0.2"
+        },
+        {
+          "department": "A",
+          "revenue_id": "r3",
+          "revenue_date": "2026-10-03",
+          "amount": "-0.05"
+        }
+      ],
+      "parameters": {
+        "date_start": "2026-10-01",
+        "date_end": "2026-11-01"
+      },
+      "expected": {
+        "outcome": "VALUE",
+        "simpleGroups": {
+          "A": "0.25"
+        }
+      },
+      "manualTruth": "独立手算：2/1出院人次；(3+4)/2=3.50、2/1=2.00天；0.1+0.2-0.05=0.25元"
+    }
+  ]
+}

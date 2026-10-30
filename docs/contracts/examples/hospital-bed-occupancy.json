@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "metric-definition/1.0",
+  "metricId": "bed_occupancy",
+  "name": "床位使用率（虚构汇总表规则示例）",
+  "domainProfile": {"id": "hospital_ops", "version": "1.0.0"},
+  "unit": "percent", "entityType": "department_day",
+  "countBasis": {"kind": "distinct_entity", "keys": ["department", "stat_date"]},
+  "population": {"operator": "all_records"},
+  "timeWindow": {"anchorField": "stat_date", "startParameter": "date_start", "endParameter": "date_end", "boundary": "[)", "timezone": "Asia/Shanghai", "dateAttribution": "event_date"},
+  "requiredFields": [
+    {"id": "department", "valueType": "string", "unit": "none", "role": "dimension"},
+    {"id": "stat_date", "valueType": "date", "unit": "date", "role": "time"},
+    {"id": "occupied_bed_days", "valueType": "decimal", "unit": "bed_day", "role": "measure"},
+    {"id": "available_bed_days", "valueType": "decimal", "unit": "bed_day", "role": "measure"}
+  ],
+  "filters": [], "exclusions": [],
+  "expression": {
+    "operator": "ratio", "scaleFactor": "100", "subsetRequired": false,
+    "numerator": {"operator": "sum", "value": {"node": "field", "field": "occupied_bed_days"}, "where": {"operator": "all_records"}},
+    "denominator": {"operator": "sum", "value": {"node": "field", "field": "available_bed_days"}, "where": {"operator": "all_records"}}
+  },
+  "groupBy": ["department"],
+  "missingPolicy": {"action": "skip_metric", "maxExcludedFraction": "0"},
+  "invalidPolicy": {"action": "skip_metric", "maxExcludedFraction": "0"},
+  "emptySetPolicy": "skip_metric", "zeroDenominatorPolicy": "skip_metric",
+  "precision": {"scale": 2, "roundingMode": "half_up"},
+  "allowedQueryParameters": [
+    {"name": "date_start", "kind": "date_start", "required": true, "allowedValues": []},
+    {"name": "date_end", "kind": "date_end", "required": true, "allowedValues": []},
+    {"name": "group_by", "kind": "group_by", "required": false, "allowedValues": ["department"]}
+  ],
+  "sourceEvidence": [{"evidenceId": "ev_bed", "documentSha256": "0000000000000000000000000000000000000000000000000000000000000000", "locator": "body/table:1/row:7", "quote": "虚构示例：按科室与统计日唯一的完整汇总行，实际占用总床日数除以实际开放总床日数乘100%；不对科室百分比取平均；不要求比值小于100%。缺失、非法或零分母则不计算。", "quoteSha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
+  "semanticStatus": "CLEAR", "operatorVersion": "operator-catalog/1.0"
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "手术室指标计算"
+  short_description: "按审核配置确定性计算指标"
+  default_prompt: "请先按指标列出计算计划，再用 Python 对全量数据计算，并反思复核分子分母、边界、分组总数和异常状态。"

@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "metric-definition/1.0",
+  "metricId": "average_stay",
+  "name": "平均住院日（虚构出院事件规则）",
+  "domainProfile": {
+    "id": "hospital_ops",
+    "version": "1.0.0"
+  },
+  "unit": "day",
+  "entityType": "discharge_event",
+  "countBasis": {
+    "kind": "distinct_entity",
+    "keys": [
+      "encounter_id"
+    ]
+  },
+  "population": {
+    "operator": "all_records"
+  },
+  "timeWindow": {
+    "anchorField": "discharge_date",
+    "startParameter": "date_start",
+    "endParameter": "date_end",
+    "boundary": "[)",
+    "timezone": "Asia/Shanghai",
+    "dateAttribution": "event_date"
+  },
+  "requiredFields": [
+    {
+      "id": "department",
+      "valueType": "string",
+      "unit": "none",
+      "role": "dimension"
+    },
+    {
+      "id": "encounter_id",
+      "valueType": "string",
+      "unit": "none",
+      "role": "key"
+    },
+    {
+      "id": "discharge_date",
+      "valueType": "date",
+      "unit": "date",
+      "role": "time"
+    },
+    {
+      "id": "stay_days",
+      "valueType": "decimal",
+      "unit": "day",
+      "role": "measure"
+    }
+  ],
+  "filters": [],
+  "exclusions": [],
+  "expression": {
+    "operator": "mean",
+    "where": {
+      "operator": "all_records"
+    },
+    "value": {
+      "node": "field",
+      "field": "stay_days"
+    }
+  },
+  "groupBy": [
+    "department"
+  ],
+  "missingPolicy": {
+    "action": "skip_metric",
+    "maxExcludedFraction": "0"
+  },
+  "invalidPolicy": {
+    "action": "skip_metric",
+    "maxExcludedFraction": "0"
+  },
+  "emptySetPolicy": "skip_metric",
+  "zeroDenominatorPolicy": "not_applicable",
+  "precision": {
+    "scale": 2,
+    "roundingMode": "half_up"
+  },
+  "allowedQueryParameters": [
+    {
+      "name": "date_start",
+      "kind": "date_start",
+      "required": true,
+      "allowedValues": []
+    },
+    {
+      "name": "date_end",
+      "kind": "date_end",
+      "required": true,
+      "allowedValues": []
+    },
+    {
+      "name": "group_by",
+      "kind": "group_by",
+      "required": false,
+      "allowedValues": [
+        "department"
+      ]
+    }
+  ],
+  "sourceEvidence": [
+    {
+      "evidenceId": "ev_average_stay",
+      "documentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locator": "body/p:1",
+      "quote": "虚构示例：以 encounter_id 唯一的完整出院事件为粒度，对已核实的 stay_days 求算术平均，按出院日期归属出院科室，源表须已按业务审核住院日口径。本规则不接受科室日平均值或累计床日。缺失、非法或重复事件跳过指标。",
+      "quoteSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "semanticStatus": "CLEAR",
+  "operatorVersion": "operator-catalog/1.0"
+}

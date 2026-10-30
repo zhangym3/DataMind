@@ -1,0 +1,4 @@
+interface:
+  display_name: "手术室指标 Word 报告"
+  short_description: "按当前定义生成中文 Word 报告"
+  default_prompt: "请先预览报告结构和生成计划，再生成 Word 报告；随后比对指标配置与结果对象并检查版面，提供复核摘要。"

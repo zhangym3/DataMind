@@ -1,0 +1,819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:datamind:metric-definition:1.0",
+  "title": "MetricDefinition 1.0 - design contract, not runtime implementation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "metricId",
+    "name",
+    "domainProfile",
+    "unit",
+    "entityType",
+    "countBasis",
+    "population",
+    "timeWindow",
+    "requiredFields",
+    "filters",
+    "exclusions",
+    "expression",
+    "groupBy",
+    "missingPolicy",
+    "invalidPolicy",
+    "emptySetPolicy",
+    "zeroDenominatorPolicy",
+    "precision",
+    "allowedQueryParameters",
+    "sourceEvidence",
+    "semanticStatus",
+    "operatorVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "metric-definition/1.0"
+    },
+    "metricId": {
+      "$ref": "#/$defs/id"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "domainProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "case",
+        "person",
+        "day",
+        "minute",
+        "bed_day",
+        "currency",
+        "percent",
+        "ratio",
+        "item"
+      ]
+    },
+    "entityType": {
+      "$ref": "#/$defs/id"
+    },
+    "countBasis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "keys"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "records",
+            "distinct_entity"
+          ]
+        },
+        "keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "records"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "keys": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "distinct_entity"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "keys": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "population": {
+      "$ref": "#/$defs/predicate"
+    },
+    "timeWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchorField",
+        "startParameter",
+        "endParameter",
+        "boundary",
+        "timezone",
+        "dateAttribution"
+      ],
+      "properties": {
+        "anchorField": {
+          "$ref": "#/$defs/id"
+        },
+        "startParameter": {
+          "$ref": "#/$defs/id"
+        },
+        "endParameter": {
+          "$ref": "#/$defs/id"
+        },
+        "boundary": {
+          "enum": [
+            "[)",
+            "[]",
+            "()",
+            "(]"
+          ]
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "dateAttribution": {
+          "enum": [
+            "event_date",
+            "event_start",
+            "event_end",
+            "scheduled_operation_date",
+            "reference_snapshot"
+          ]
+        }
+      }
+    },
+    "requiredFields": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/fieldRequirement"
+      }
+    },
+    "filters": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/predicate"
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/predicate"
+      }
+    },
+    "expression": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/aggregate"
+        },
+        {
+          "$ref": "#/$defs/ratio"
+        }
+      ]
+    },
+    "groupBy": {
+      "type": "array",
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "missingPolicy": {
+      "$ref": "#/$defs/dataPolicy"
+    },
+    "invalidPolicy": {
+      "$ref": "#/$defs/dataPolicy"
+    },
+    "emptySetPolicy": {
+      "enum": [
+        "skip_metric",
+        "zero_for_count"
+      ]
+    },
+    "zeroDenominatorPolicy": {
+      "enum": [
+        "skip_metric",
+        "not_applicable"
+      ]
+    },
+    "precision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scale",
+        "roundingMode"
+      ],
+      "properties": {
+        "scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "roundingMode": {
+          "enum": [
+            "half_up",
+            "half_even",
+            "down"
+          ]
+        }
+      }
+    },
+    "allowedQueryParameters": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/queryParameter"
+      }
+    },
+    "sourceEvidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "semanticStatus": {
+      "const": "CLEAR"
+    },
+    "operatorVersion": {
+      "const": "operator-catalog/1.0"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "maxLength": 80
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fieldRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "valueType",
+        "unit",
+        "role"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "valueType": {
+          "enum": [
+            "string",
+            "integer",
+            "decimal",
+            "boolean",
+            "date",
+            "datetime"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "role": {
+          "enum": [
+            "key",
+            "time",
+            "measure",
+            "dimension",
+            "filter"
+          ]
+        }
+      }
+    },
+    "dataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "maxExcludedFraction"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "skip_metric",
+            "exclude_and_report"
+          ]
+        },
+        "maxExcludedFraction": {
+          "$ref": "#/$defs/decimal"
+        }
+      }
+    },
+    "queryParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "required",
+        "allowedValues"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "date_start",
+            "date_end",
+            "dimension_filter",
+            "group_by"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "allowedValues": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceId",
+        "documentSha256",
+        "locator",
+        "quote",
+        "quoteSha256"
+      ],
+      "properties": {
+        "evidenceId": {
+          "$ref": "#/$defs/id"
+        },
+        "documentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "quoteSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "scalar": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "field"
+          ],
+          "properties": {
+            "node": {
+              "const": "field"
+            },
+            "field": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "valueType",
+            "value",
+            "unit"
+          ],
+          "properties": {
+            "node": {
+              "const": "literal"
+            },
+            "valueType": {
+              "const": "decimal"
+            },
+            "value": {
+              "$ref": "#/$defs/decimal"
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "valueType",
+            "value",
+            "unit"
+          ],
+          "properties": {
+            "node": {
+              "const": "literal"
+            },
+            "valueType": {
+              "const": "integer"
+            },
+            "value": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "valueType",
+            "value"
+          ],
+          "properties": {
+            "node": {
+              "const": "literal"
+            },
+            "valueType": {
+              "const": "string"
+            },
+            "value": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "valueType",
+            "value"
+          ],
+          "properties": {
+            "node": {
+              "const": "literal"
+            },
+            "valueType": {
+              "const": "boolean"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "parameter"
+          ],
+          "properties": {
+            "node": {
+              "const": "parameter"
+            },
+            "parameter": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node",
+            "operator",
+            "startField",
+            "endField",
+            "negativePolicy"
+          ],
+          "properties": {
+            "node": {
+              "const": "duration"
+            },
+            "operator": {
+              "const": "duration_minutes"
+            },
+            "startField": {
+              "$ref": "#/$defs/id"
+            },
+            "endField": {
+              "$ref": "#/$defs/id"
+            },
+            "negativePolicy": {
+              "const": "invalid"
+            }
+          }
+        }
+      ]
+    },
+    "predicate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator"
+          ],
+          "properties": {
+            "operator": {
+              "const": "all_records"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "left",
+            "right"
+          ],
+          "properties": {
+            "operator": {
+              "enum": [
+                "eq",
+                "ne",
+                "gt",
+                "gte",
+                "lt",
+                "lte"
+              ]
+            },
+            "left": {
+              "$ref": "#/$defs/scalar"
+            },
+            "right": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "value",
+            "values"
+          ],
+          "properties": {
+            "operator": {
+              "enum": [
+                "in",
+                "not_in"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/scalar"
+            },
+            "values": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": {
+                "$ref": "#/$defs/scalar"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "value"
+          ],
+          "properties": {
+            "operator": {
+              "enum": [
+                "is_null",
+                "is_not_null"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "args"
+          ],
+          "properties": {
+            "operator": {
+              "enum": [
+                "and",
+                "or"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 32,
+              "items": {
+                "$ref": "#/$defs/predicate"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "arg"
+          ],
+          "properties": {
+            "operator": {
+              "const": "not"
+            },
+            "arg": {
+              "$ref": "#/$defs/predicate"
+            }
+          }
+        }
+      ]
+    },
+    "aggregate": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "where"
+          ],
+          "properties": {
+            "operator": {
+              "const": "count"
+            },
+            "where": {
+              "$ref": "#/$defs/predicate"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "fields",
+            "where"
+          ],
+          "properties": {
+            "operator": {
+              "const": "count_distinct"
+            },
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "where": {
+              "$ref": "#/$defs/predicate"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operator",
+            "value",
+            "where"
+          ],
+          "properties": {
+            "operator": {
+              "enum": [
+                "sum",
+                "mean",
+                "min",
+                "max"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/scalar"
+            },
+            "where": {
+              "$ref": "#/$defs/predicate"
+            }
+          }
+        }
+      ]
+    },
+    "ratio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator",
+        "numerator",
+        "denominator",
+        "scaleFactor",
+        "subsetRequired"
+      ],
+      "properties": {
+        "operator": {
+          "const": "ratio"
+        },
+        "numerator": {
+          "$ref": "#/$defs/aggregate"
+        },
+        "denominator": {
+          "$ref": "#/$defs/aggregate"
+        },
+        "scaleFactor": {
+          "enum": [
+            "1",
+            "100"
+          ]
+        },
+        "subsetRequired": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

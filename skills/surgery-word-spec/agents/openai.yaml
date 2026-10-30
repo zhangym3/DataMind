@@ -1,0 +1,4 @@
+interface:
+  display_name: "手术室指标文档解析"
+  short_description: "从 Word 提取并版本化指标定义"
+  default_prompt: "请先列出解析计划，再解析这份指标 Word 文档，生成配置草稿并反思核对原文依据与待确认口径。"
